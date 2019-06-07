@@ -1,14 +1,48 @@
 version: '3'
 
 services:
-  db:
+  # Postgresql Database
+  pgdb:
     image: postgres
+    networks:
+      - pgdb_network
+
+  # Django/gunicorn server
   web:
-    build: ./test
-    command: python manage.py runserver 0.0.0.0:8000
+    container_name: web
+    build: ./kiosk
+    command: bash -c "python3 manage.py collectstatic --no-input && python3 manage.py migrate && gunicorn --timeout=30 --workers=2 --bind :8000 kiosk.wsgi:application"
     volumes:
-      - ./test/app:/code
-    ports:
-      - "8000:8000"
+    volumes:
+      - ./kiosk/app/:/code
+      - static-volume:/code/static
+    #ports:
+    #  - "8000:8000"
+    expose:
+      - '8000'
     depends_on:
-      - db
+      - pgdb
+    networks:
+      - web_network
+      - pgdb_network
+
+  # nginx for reverse proxy
+  nginx:
+    image: nginx:latest
+    ports:
+      - "3000:8000"
+    volumes:
+      - static-volume:/code/static
+      - ./config/nginx:/etc/nginx/conf.d
+    depends_on:
+      - web
+    networks:
+      - web_network
+networks:
+  web_network:
+    driver: bridge
+  pgdb_network:
+    driver: bridge
+# Names our volume
+volumes:
+  static-volume:
